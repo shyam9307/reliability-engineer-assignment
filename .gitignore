@@ -1,0 +1,35 @@
+﻿# Python virtual environment
+.venv/
+
+# Python-generated files
+__pycache__/
+*.py[cod]
+
+# Pytest cache
+.pytest_cache/
+
+# Local SQLite database
+pipeline.db
+*.db
+*.sqlite
+*.sqlite3
+
+# Local environment variables and secrets
+.env
+.env.*
+!.env.example
+
+# Local logs
+*.log
+
+# Editor and operating-system files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Local backup copies
+main_v1_backup.py
+main_before_dlq.py
+main_before_idempotency.py
+storage_backup.py
