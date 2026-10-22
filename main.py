@@ -4,6 +4,14 @@ import threading
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
+from contextlib import asynccontextmanager
+
+from observability import (
+    MetricsMiddleware,
+    cloudwatch_publisher,
+    health_response,
+    metrics_response,
+)
 
 from storage import (
     initialize_database,
@@ -17,13 +25,34 @@ from storage import (
 )
 
 
-app = FastAPI(title="Reliable Pipeline Service")
-
-
-@app.on_event("startup")
-def startup_event():
+@asynccontextmanager
+async def lifespan(app: FastAPI):
     initialize_database()
     print("SQLite database initialized successfully.")
+
+    cloudwatch_publisher.start()
+    try:
+        yield
+    finally:
+        cloudwatch_publisher.stop()
+
+
+app = FastAPI(
+    title="Reliable Pipeline Service",
+    lifespan=lifespan,
+)
+
+app.add_middleware(MetricsMiddleware)
+
+
+@app.get("/health")
+def health():
+    return health_response()
+
+
+@app.get("/metrics")
+def get_metrics():
+    return metrics_response()
 
 
 class CircuitBreaker:

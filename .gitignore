@@ -33,3 +33,25 @@ main_v1_backup.py
 main_before_dlq.py
 main_before_idempotency.py
 storage_backup.py
+
+# Terraform local files and state
+infra/terraform/.terraform/
+infra/terraform/*.tfstate
+infra/terraform/*.tfstate.*
+infra/terraform/terraform.tfvars
+infra/terraform/terraform.tfvars.json
+infra/terraform/crash.log
+infra/terraform/crash.*.log
+
+# Terraform override files
+infra/terraform/override.tf
+infra/terraform/override.tf.json
+infra/terraform/*_override.tf
+infra/terraform/*_override.tf.json
+
+# Local environment and credentials
+.env
+.env.*
+!.env.example
+.aws/
+.aws-credentials
