@@ -19,5 +19,13 @@ pipeline {
                 }
             }
         }
+
+        stage('Terraform Plan') {
+            steps {
+                dir('infra/terraform') {
+                    sh 'terraform plan -input=false -lock-timeout=60s -out=tfplan'
+                }
+            }
+        }
     }
 }
