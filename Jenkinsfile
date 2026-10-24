@@ -42,6 +42,22 @@ pipeline {
             }
         }
 
+        stage('Application Tests') {
+            steps {
+                sh '''
+                    set -eu
+                    docker run --rm --entrypoint /bin/sh \
+                        -v "$WORKSPACE:/tests:ro" \
+                        "$IMAGE_URI" \
+                        -c 'mkdir -p /tmp/reliability-tests &&
+                            cp -a /app/. /tmp/reliability-tests/ &&
+                            cp -a /tests/. /tmp/reliability-tests/ &&
+                            cd /tmp/reliability-tests &&
+                            python -m pytest -q -p no:cacheprovider'
+                '''
+            }
+        }
+
         stage('Push Image to ECR') {
             steps {
                 sh '''
