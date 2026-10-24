@@ -23,7 +23,7 @@ pipeline {
         stage('Terraform Plan') {
             steps {
                 dir('infra/terraform') {
-                    sh 'terraform plan -input=false -lock-timeout=60s -out=tfplan'
+                    sh 'terraform plan -input=false -lock-timeout=60s -var="container_image=819693014102.dkr.ecr.ap-south-1.amazonaws.com/reliability-pipeline:74a6d8d995c5186644a99e5427c716f35451cf40-39903631045-1" -out=tfplan'
                 }
             }
         }
