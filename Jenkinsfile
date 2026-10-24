@@ -13,8 +13,9 @@ pipeline {
             steps {
                 dir('infra/terraform') {
                     sh 'terraform fmt -check -recursive'
-                    sh 'terraform init -backend=false -input=false'
+                    sh 'terraform init -input=false'
                     sh 'terraform validate'
+                    sh 'terraform state list'
                 }
             }
         }
