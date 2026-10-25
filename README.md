@@ -22,25 +22,76 @@ This project demonstrates reliability engineering for a speech-processing pipeli
 
 ## Setup
 
-From the project directory, activate the existing virtual environment and install dependencies:
+### Prerequisites
+
+- Python 3.10 or newer
+- pip
+
+### Create a virtual environment
+
+From the repository root, run the commands for your operating system.
+
+**Windows PowerShell**
 
 ```powershell
+py -m venv .venv
 .\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
-
-
-
 ```
 
-Start the API service:
+If PowerShell blocks activation, use the virtual environment's Python directly:
 
 ```powershell
-python -m uvicorn main:app --reload
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+```
+
+**Linux or macOS**
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+```
+
+### Run the service
+
+```powershell
+python -m uvicorn main:app --host 127.0.0.1 --port 8000
 ```
 
 The API is available at `http://127.0.0.1:8000`.
 
 Interactive API documentation: `http://127.0.0.1:8000/docs`.
+
+### Verify the service
+
+In a second terminal, run:
+
+```powershell
+Invoke-RestMethod http://127.0.0.1:8000/health
+```
+
+Expected response:
+
+```json
+{"status":"healthy"}
+```
+
+### Run tests
+
+```powershell
+python -m pytest -v
+```
+
+### Generate the synthetic event dataset
+
+```powershell
+python .\scripts\generate_synthetic_events.py
+```
+
+The generator writes 500 synthetic events to `data/synthetic_events.jsonl`. The dataset uses a fixed random seed and contains no real borrower data.
 
 ## API Endpoints
 
@@ -105,9 +156,13 @@ A production deployment would add compute, model inference, storage, monitoring,
 
 ## Replacing the Mock with Open-Weight Models
 
-The mock dependency can be replaced with an adapter that calls open-weight speech-to-text, language-model, and text-to-speech components. The adapter should preserve the existing dependency boundary and normalize downstream timeouts and errors. This allows the retry, circuit-breaker, idempotency, and dead-letter mechanisms to remain independent of the selected models.
+The service uses a model-agnostic adapter boundary defined in `pipeline_adapter.py`. The current `MockPipelineAdapter` simulates the STT → LLM → TTS pipeline, including latency and intermittent downstream failures, so reliability features can be tested without downloading models or requiring GPU infrastructure.
 
-Model selection and hosting requirements should be evaluated using measured latency, quality, memory use, and operating cost.
+To replace the mock, implement another `PipelineAdapter` that exposes the same `process(audio_ref)` interface. The implementation can call an STT model such as faster-whisper, an instruction-tuned open-weight LLM, and a TTS engine such as Piper. Keep model loading, inference, timeouts, and model-specific error handling inside the adapter rather than coupling them to the API, retry logic, circuit breaker, or dead-letter queue.
+
+The API and resilience layer should continue to consume the adapter's result and handle failures through the existing retry, circuit-breaker, and dead-letter mechanisms. Model-specific dependencies and configuration should be documented separately, and credentials must be supplied through environment variables or an appropriate secrets manager—not hardcoded in source code.
+
+**Current limitation:** the repository's adapter is a synthetic mock. Real model inference, GPU deployment, and end-to-end performance measurements have not yet been demonstrated.
 
 ## Limitations
 

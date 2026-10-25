@@ -58,3 +58,18 @@ infra/terraform/*_override.tf.json
 
 # Local Terraform state backups
 terraform-state-backup.json
+
+@'
+
+# Terraform state, plans, and local working directories
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+crash.*.log
+
+# Local test and coverage output
+.coverage
+htmlcov/
+'@ | Add-Content -Path .\.gitignore -Encoding utf8

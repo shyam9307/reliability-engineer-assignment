@@ -5,6 +5,7 @@ import threading
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from contextlib import asynccontextmanager
+from pipeline_adapter import MockPipelineAdapter
 
 from observability import (
     MetricsMiddleware,
@@ -43,6 +44,8 @@ app = FastAPI(
 )
 
 app.add_middleware(MetricsMiddleware)
+
+pipeline_adapter = MockPipelineAdapter()
 
 
 @app.get("/health")
@@ -134,42 +137,39 @@ class PipelineRequest(BaseModel):
     audio_ref: str
 
 
-def mock_downstream_dependency(force_failure: bool = False):
-    """
-    Simulate a downstream dependency.
 
-    Latency follows a lognormal distribution.
-    A selected request can simulate a persistent downstream outage.
-    Other requests have a 20% transient failure probability per attempt.
-    """
-    delay = random.lognormvariate(5.7, 0.60) / 1000
-    time.sleep(delay)
 
+def mock_downstream_dependency(
+    force_failure: bool = False,
+    audio_ref: str = "synthetic",
+):
+    """Compatibility wrapper around the mock pipeline adapter."""
     if force_failure:
         raise TimeoutError("downstream_timeout")
 
-    if random.random() < 0.20:
-        raise TimeoutError("downstream_timeout")
-
+    return pipeline_adapter.process(audio_ref=audio_ref)
 
 def call_dependency_with_retries(
     max_attempts: int = 3,
     force_failure: bool = False,
+    audio_ref: str = "synthetic",
 ):
     """
     Retry dependency failures using exponential backoff and jitter.
-
-    A forced failure represents a persistent outage for the logical
-    request, so all retry attempts fail.
+    Returns the successful adapter result.
     """
     for attempt in range(max_attempts):
         try:
             print(f"Dependency attempt {attempt + 1}/{max_attempts}")
 
-            mock_downstream_dependency(force_failure=force_failure)
+            # Keep the wrapper so existing tests can monkeypatch it.
+            result = mock_downstream_dependency(
+                force_failure=force_failure,
+                audio_ref=audio_ref,
+            )
 
             print(f"Dependency succeeded on attempt {attempt + 1}")
-            return
+            return result
 
         except TimeoutError:
             print(
@@ -188,6 +188,7 @@ def call_dependency_with_retries(
             print(f"Retrying in {wait_seconds:.3f} seconds")
             time.sleep(wait_seconds)
 
+
 def ensure_circuit_allows_request():
     if not circuit_breaker.allow_request():
         print("Request rejected: circuit breaker is open")
@@ -199,16 +200,17 @@ def ensure_circuit_allows_request():
             },
         )
 
+
 def process_dependency_or_raise(event_id: str, audio_ref: str):
     """Call the dependency, record breaker state, and persist failures."""
     ensure_circuit_allows_request()
 
-    # Select approximately 20% of logical requests for persistent failure.
-    force_failure = random.random() < 0.20
-
     try:
-        call_dependency_with_retries(force_failure=force_failure)
+        result = call_dependency_with_retries(
+            audio_ref=audio_ref,
+        )
         circuit_breaker.record_success()
+        return result
 
     except TimeoutError:
         circuit_breaker.record_failure()
@@ -232,13 +234,15 @@ def process_dependency_or_raise(event_id: str, audio_ref: str):
             },
         )
 
-def create_success_response(start_time: float):
+def create_success_response(start_time: float, result: dict):
+    """Build the API response and report end-to-end request latency."""
     return {
         "status": "ok",
-        "transcript": "synthetic transcript",
-        "response_audio_ref": "synthetic",
+        "transcript": result["transcript"],
+        "response_audio_ref": result["response_audio_ref"],
         "latency_ms": round((time.perf_counter() - start_time) * 1000),
     }
+
 
 
 @app.post("/pipeline/process")
@@ -275,9 +279,12 @@ def process_pipeline(request: PipelineRequest):
             },
         )
 
-    process_dependency_or_raise(request.event_id, request.audio_ref)
+    result = process_dependency_or_raise(
+        request.event_id,
+        request.audio_ref,
+    )
 
-    response = create_success_response(start_time)
+    response = create_success_response(start_time, result)
 
     save_processed_event(
         request.event_id,
@@ -333,19 +340,19 @@ def replay_dead_letter(event_id: str):
     increment_dead_letter_replay_count(event_id)
 
     start_time = time.perf_counter()
+
     try:
-        call_dependency_with_retries()
+        result = call_dependency_with_retries(
+            audio_ref=event["audio_ref"],
+        )
         circuit_breaker.record_success()
+
     except TimeoutError:
         circuit_breaker.record_failure()
         save_dead_letter(
-            event_id=event_id,
-            audio_ref=event["audio_ref"],
-            reason="downstream_timeout",
-        )
-        print(
-            f"event_id={event_id} replay_failed=true "
-            "reason=downstream_timeout saved_to_dlq=true"
+            event_id,
+            event["audio_ref"],
+            "downstream_timeout",
         )
         raise HTTPException(
             status_code=503,
@@ -355,7 +362,7 @@ def replay_dead_letter(event_id: str):
             },
         )
 
-    response = create_success_response(start_time)
+    response = create_success_response(start_time, result)
     save_processed_event(event_id, event["audio_ref"], response)
     delete_dead_letter(event_id)
 

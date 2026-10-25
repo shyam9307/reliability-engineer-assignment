@@ -8,7 +8,7 @@ import main
 def test_dead_letter_failure_and_successful_replay():
     original_dependency = main.mock_downstream_dependency
 
-    def always_fail(force_failure=False):
+    def always_fail(force_failure=False, audio_ref="synthetic"):
         raise TimeoutError("downstream_timeout")
 
     # Generate a fresh ID so previous test runs cannot affect this one.
@@ -54,7 +54,10 @@ def test_dead_letter_failure_and_successful_replay():
 
             # Step C: Make the dependency succeed.
             main.mock_downstream_dependency = (
-                lambda force_failure=False: None
+                lambda force_failure=False, audio_ref="synthetic": {
+                    "transcript": "synthetic transcript",
+                    "response_audio_ref": "synthetic",
+                }
             )
 
             replay_response = client.post(
